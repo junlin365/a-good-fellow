@@ -16,7 +16,8 @@ Skills (each in `skills/<name>/SKILL.md`):
 - `reply-notifications` — final sweep: reply where warranted and reconcile routed
   notifications against owner-sweep receipts/current state.
 - `join-discussions` — reply to Discussions that @mention the user.
-- `fix-assigned-issues` — fix assigned issues and open PRs.
+- `fix-assigned-issues` — fix assigned issues and open PRs; request a concrete split
+  for decomposable oversized work, or resume an atomic change from its bounded handoff.
 - `create-pr` — commit + push + open a PR from a working tree with changes.
 - `process-prs` — fix feedback on the user's PRs; review others' PRs (critical
   issues when found; otherwise a concise, concrete rationale, with bare `LGTM` only

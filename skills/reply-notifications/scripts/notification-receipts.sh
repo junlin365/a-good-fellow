@@ -66,7 +66,8 @@ capture_subject() {
         if .pull_request then error("subject is a pull request") else
         ["issue",.id,.number,.state,.state_reason,.title,.body,.locked,
          .active_lock_reason,.user.login,
-         ([.assignees[].login] | sort)] | @json end' > "$output"
+         ([.assignees[].login] | sort),
+         ([.labels[].name] | sort)] | @json end' > "$output"
       gh api "$repo_path/issues/$number/comments?per_page=100" --paginate --jq '
         .[] | ["comment",.id,.user.login,.body,.created_at,.updated_at,
         .author_association] | @json' | LC_ALL=C sort >> "$output"
@@ -181,7 +182,7 @@ case "$mode" in
     if [ "$7" != - ]; then validate_updated_at "$7"; fi
     case "$2:$8" in
       pr:ready|pr:waiting-author|pr:ci-waiting|pr:commented|pr:approved|pr:fixed) ;;
-      issue:fixed|issue:answered|issue:clarified) ;;
+      issue:fixed|issue:answered|issue:clarified|issue:needs-split) ;;
       discussion:answered|discussion:no-response-needed) ;;
       *) printf 'notification-receipts: invalid covered outcome\n' >&2; exit 64 ;;
     esac

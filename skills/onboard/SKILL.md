@@ -282,6 +282,7 @@ test -x "$RUNTIME_DIR/skills/process-prs/scripts/pr-review-guard.sh"
 test -x "$RUNTIME_DIR/skills/process-prs/scripts/pr-inventory.sh"
 test -x "$RUNTIME_DIR/skills/process-prs/scripts/pr-queue.sh"
 test -x "$RUNTIME_DIR/skills/process-prs/scripts/pr-handoff.sh"
+test -x "$RUNTIME_DIR/skills/fix-assigned-issues/scripts/issue-handoff.sh"
 test -x "$RUNTIME_DIR/skills/reply-notifications/scripts/notification-receipts.sh"
 test -x "$RUNTIME_DIR/skills/onboard/scripts/maintenance-check.sh"
 for script in "$RUNTIME_DIR"/skills/*/scripts/*.sh; do

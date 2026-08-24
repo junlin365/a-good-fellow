@@ -22,7 +22,9 @@ as well as GNU/Linux.
      pinned to the current HEAD prevent needless re-review.
 2. **fix-assigned-issues** — takes open issues assigned to you, fixes them on a
    `good-fellow/issue-N` branch in an isolated clone/worktree, and opens a PR
-   (via **create-pr**).
+   (via **create-pr**). Oversized work is never silently retried forever: separable
+   work receives one concrete decomposition request, while truly atomic work may
+   resume from a bounded local checkpoint for at most three sweeps / 24 hours.
 3. **join-discussions** — finds Discussions that @mention you and posts a substantive
    reply.
 4. **reply-notifications** — runs last, triages ordinary unread notifications, and
@@ -70,7 +72,11 @@ After each item, the next deep item starts only when the review-time floor still
 otherwise the untouched tail stays queued rather than being bulk-skipped. Interrupted
 work is handed off only with matching HEAD and guarded state. A malformed cursor is
 ignored and replaced on the next advance; malformed handoff entries are reported and
-skipped without disabling healthy queue rows. Owner sweeps emit
+skipped without disabling healthy queue rows. Assigned-issue continuation is likewise
+state-bound: only a clean local checkpoint matching the complete Issue state and
+default-branch base can resume, and it has a strict attempt/age limit. Decomposable
+oversized work leaves a visible marked split request instead of existing only as a
+repeated private-log deferral. Owner sweeps emit
 short-lived coverage receipts; the final notification pass clears routed inbox entries
 only when that work was covered or fresh GitHub state proves it is no longer actionable.
 

@@ -6,6 +6,7 @@ QUEUE="$ROOT/skills/process-prs/scripts/pr-queue.sh"
 HANDOFF="$ROOT/skills/process-prs/scripts/pr-handoff.sh"
 GUARD="$ROOT/skills/process-prs/scripts/pr-review-guard.sh"
 RECEIPTS="$ROOT/skills/reply-notifications/scripts/notification-receipts.sh"
+ISSUE_HANDOFF="$ROOT/skills/fix-assigned-issues/scripts/issue-handoff.sh"
 TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/good-fellow-runtime-test.XXXXXX")
 
 cleanup() {
@@ -53,6 +54,79 @@ done
 grep -F 'ignoring invalid state file' "$TEMP_ROOT/handoff-show.err" >/dev/null ||
   fail 'missing corrupt handoff warning'
 
+# An oversized atomic issue can resume only from a clean, committed checkpoint bound
+# to one complete Issue proof and one default-branch base. Every save must advance the
+# local branch, and the continuation expires after the configured attempt bound.
+issue_repo="$TEMP_ROOT/issue-repo"
+issue_state="$TEMP_ROOT/issue-state"
+issue_worktrees="$TEMP_ROOT/issue-worktrees"
+issue_progress="$TEMP_ROOT/issue-progress.md"
+mkdir -p "$issue_repo" "$issue_state" "$issue_worktrees"
+git -C "$issue_repo" init -q
+printf 'base\n' > "$issue_repo/file.txt"
+git -C "$issue_repo" add file.txt
+git -C "$issue_repo" -c user.name=test -c user.email=test@example.com \
+  commit -q -m base
+issue_base=$(git -C "$issue_repo" rev-parse HEAD)
+git -C "$issue_repo" worktree add -q -b good-fellow/issue-7 \
+  "$issue_worktrees/app-issue-7" "$issue_base"
+printf 'checkpoint one\n' >> "$issue_worktrees/app-issue-7/file.txt"
+git -C "$issue_worktrees/app-issue-7" add file.txt
+git -C "$issue_worktrees/app-issue-7" -c user.name=test -c user.email=test@example.com \
+  commit -q -m 'first checkpoint'
+printf '%s\n' 'completed: first checkpoint' 'next: second checkpoint' > "$issue_progress"
+issue_proof=$(printf '%064d' 0 | tr 0 b)
+GOOD_FELLOW_STATE_DIR="$issue_state" GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" \
+  "$ISSUE_HANDOFF" save acme app 7 "$issue_proof" "$issue_base" \
+  implementing "$issue_progress"
+issue_match=$(GOOD_FELLOW_STATE_DIR="$issue_state" \
+  GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" "$ISSUE_HANDOFF" match \
+  acme app 7 "$issue_proof" "$issue_base")
+assert_eq "$issue_match" $'implementing\t1\t'"$issue_worktrees/app-issue-7"
+assert_eq "$(GOOD_FELLOW_STATE_DIR="$issue_state" \
+  GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" "$ISSUE_HANDOFF" payload acme app 7)" \
+  $'completed: first checkpoint\nnext: second checkpoint'
+assert_eq "$(GOOD_FELLOW_STATE_DIR="$issue_state" \
+  GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" "$ISSUE_HANDOFF" resume-key)" \
+  $'https://api.github.com/repos/acme/app\t7'
+
+set +e
+GOOD_FELLOW_STATE_DIR="$issue_state" GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" \
+  "$ISSUE_HANDOFF" save acme app 7 "$issue_proof" "$issue_base" \
+  implementing "$issue_progress" > "$TEMP_ROOT/issue-no-progress.out" \
+  2> "$TEMP_ROOT/issue-no-progress.err"
+issue_no_progress_status=$?
+set -e
+assert_eq "$issue_no_progress_status" 64
+grep -F 'made no checkpoint progress' "$TEMP_ROOT/issue-no-progress.err" >/dev/null ||
+  fail 'issue handoff accepted a save without code progress'
+
+set +e
+changed_proof=$(printf '%064d' 0 | tr 0 c)
+GOOD_FELLOW_STATE_DIR="$issue_state" GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" \
+  "$ISSUE_HANDOFF" match acme app 7 "$changed_proof" "$issue_base" \
+  > "$TEMP_ROOT/issue-drift.out" 2> "$TEMP_ROOT/issue-drift.err"
+issue_drift_status=$?
+set -e
+assert_eq "$issue_drift_status" 3
+
+printf 'checkpoint two\n' >> "$issue_worktrees/app-issue-7/file.txt"
+git -C "$issue_worktrees/app-issue-7" add file.txt
+git -C "$issue_worktrees/app-issue-7" -c user.name=test -c user.email=test@example.com \
+  commit -q -m 'second checkpoint'
+GOOD_FELLOW_STATE_DIR="$issue_state" GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" \
+  "$ISSUE_HANDOFF" save acme app 7 "$issue_proof" "$issue_base" testing "$issue_progress"
+set +e
+GOOD_FELLOW_STATE_DIR="$issue_state" GOOD_FELLOW_WORKTREE_ROOT="$issue_worktrees" \
+  GOOD_FELLOW_ISSUE_HANDOFF_MAX_ATTEMPTS=2 "$ISSUE_HANDOFF" match \
+  acme app 7 "$issue_proof" "$issue_base" \
+  > "$TEMP_ROOT/issue-expired.out" 2> "$TEMP_ROOT/issue-expired.err"
+issue_expired_status=$?
+set -e
+assert_eq "$issue_expired_status" 4
+grep -F 'bounded continuation expired' "$TEMP_ROOT/issue-expired.err" >/dev/null ||
+  fail 'issue handoff did not report its attempt expiry'
+
 # Draft PRs intentionally advance without receipts; reject an implementation that
 # accidentally records draft coverage.
 proof=$(printf '%064d' 0 | tr 0 a)
@@ -66,6 +140,31 @@ set -e
 assert_eq "$receipt_status" 64
 grep -F 'invalid covered outcome' "$TEMP_ROOT/receipt.err" >/dev/null ||
   fail 'draft receipt failed for the wrong reason'
+
+# A visible, concrete decomposition request is durable owner coverage, unlike a
+# private time-budget deferral. Exercise the exact receipt outcome accepted by final
+# notification cleanup.
+receipt_stub_bin="$TEMP_ROOT/receipt-bin"
+mkdir -p "$receipt_stub_bin"
+cat > "$receipt_stub_bin/gh" <<'GH_RECEIPT_STUB'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+case "${2:-}" in
+  /notifications/threads/77) printf '2026-08-19T00:00:00Z\t-\n' ;;
+  *) exit 64 ;;
+esac
+GH_RECEIPT_STUB
+chmod +x "$receipt_stub_bin/gh"
+split_proof=$(printf '%064d' 0 | tr 0 d)
+PATH="$receipt_stub_bin:$PATH" GOOD_FELLOW_STATE_DIR="$TEMP_ROOT/split-receipt-state" \
+  GOOD_FELLOW_RUN_STARTED_AT_EPOCH=split-test "$RECEIPTS" record issue \
+  https://api.github.com/repos/acme/app 7 77 2026-08-19T00:00:00Z - \
+  needs-split - "$split_proof"
+split_receipt=$(PATH="$receipt_stub_bin:$PATH" \
+  GOOD_FELLOW_STATE_DIR="$TEMP_ROOT/split-receipt-state" "$RECEIPTS" lookup issue \
+  https://api.github.com/repos/acme/app 7 77 2026-08-19T00:00:00Z -)
+printf '%s\n' "$split_receipt" | awk -F '\t' '$7=="needs-split" {found=1} END {exit !found}' ||
+  fail 'needs-split receipt was not persisted'
 
 receipt_state="$TEMP_ROOT/receipt-prune"
 mkdir -p "$receipt_state"
@@ -391,7 +490,7 @@ git clone -q "$source_remote" "$source_checkout"
 original_source_head=$(git -C "$source_checkout" rev-parse HEAD)
 git -C "$source_seed" -c user.name=test -c user.email=test@example.com \
   commit --allow-empty -m second >/dev/null
-git -C "$source_seed" push -q
+git -C "$source_seed" push -q origin HEAD:main
 expected_source_head=$(git -C "$source_seed" rev-parse HEAD)
 printf '0\n' > "$maintenance_state/maintenance-last-check"
 printf 'new remote preference\n' > "$maintenance_state/instruction.md"

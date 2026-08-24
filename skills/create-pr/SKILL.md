@@ -22,19 +22,25 @@ git branch --show-current
 - Refuse to run on the repo's default branch or on a branch the user checked out in
   their own working tree — this skill only ships branches created per conventions §3
   (`good-fellow/*`) or the user's explicit current branch when invoked manually.
-- Refuse if there are no changes.
+- Refuse only when there are neither working-tree changes nor local commits ahead of
+  the target base. A resumed `fix-assigned-issues` worktree may be clean because its
+  bounded handoff is stored as one or more unpublished logical checkpoint commits.
 
 ## 2. Self-review the diff
 
-Read the full `git diff` (plus untracked files). Check for: debug leftovers,
+Read the full branch diff against the target base, plus working-tree and untracked
+changes. Do not review only the last checkpoint commit. Check for: debug leftovers,
 accidental file inclusions (lockfiles, secrets, editor junk), broken imports, logic
-errors. Fix what you find. If a secret is staged, stop and report — never push it.
+errors. Fix what you find. If a secret is committed or staged, stop and report — never
+push it.
 
 ## 3. Commit
 
-Group the changes into one commit (or a few logical ones) with a message in the
+Group uncommitted changes into one commit (or a few logical ones) with a message in the
 repository's existing style (`git log --oneline -15` to sample). Subject line explains
-*why*, not just *what*. Commit only files related to the task.
+*why*, not just *what*. Preserve existing logical issue-checkpoint commits; if they are
+WIP-quality rather than reviewable commits, stop instead of publishing them. Commit
+only files related to the task.
 
 This skill runs unattended, so satisfy the commit preconditions in conventions §6
 first (identity resolvable, credential helper present) and **never invoke an editor** —

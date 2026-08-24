@@ -217,6 +217,12 @@ Before acting on any PR, issue, thread, or discussion:
   stale handoff analysis and rebuild from a fresh snapshot. The queue is the union of
   current GitHub search results and open handoff rows, so withdrawing a notification
   cannot silently orphan already-started work; closed PR handoffs are pruned.
+- An assigned issue that cannot fit one run must not be silently deferred forever.
+  Decomposable work gets one marked, concrete split request. Only an atomic change may
+  retain unpublished code, and then only through the bounded issue handoff while its
+  complete issue proof, default-branch base, and local checkpoint still match. Resume
+  it before unrelated issues; a private log promise or an unbound leftover worktree is
+  not continuation state.
 - A current `APPROVED` review authored by the authenticated user on the exact current
   HEAD is legacy coverage even without a good-fellow marker, unless it was dismissed
   or newer feedback/re-request/state makes re-evaluation necessary. Do not re-review it

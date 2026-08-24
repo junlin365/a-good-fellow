@@ -107,7 +107,8 @@ VERSION_RUNNER="$DEPLOY_DIR/run-good-fellow.sh"
   differing from its current HEAD means the deployment lags it (report which commit
   is deployed rather than guessing severity). Also require the deployment's
   `runtime/skills`, `runtime/docs`, and executable `pr-queue.sh`, `pr-handoff.sh`,
-  `pr-review-guard.sh`, `pr-inventory.sh`, and `notification-receipts.sh`. Two
+  `pr-review-guard.sh`, `pr-inventory.sh`, `issue-handoff.sh`, and
+  `notification-receipts.sh`. Two
   content checks remain because they are security boundaries, not version probes:
   the Claude command must include `--disable-slash-commands` and not allow the
   global `Skill` tool, and the Codex command must use the deployment's paired
@@ -130,6 +131,13 @@ VERSION_RUNNER="$DEPLOY_DIR/run-good-fellow.sh"
   `pr-handoff: ignoring invalid state file` is recoverable: healthy rows continue and
   the next cursor advance replaces a bad cursor. Report the affected path; repeated
   warnings for the same handoff mean the corrupt file should be inspected and removed.
+- **Stuck assigned issue.** Resolve
+  `ISSUE_HANDOFF="$DEPLOY_DIR/runtime/skills/fix-assigned-issues/scripts/issue-handoff.sh"`
+  and run `"$ISSUE_HANDOFF" show` plus `"$ISSUE_HANDOFF" resume-key`. A handoff is
+  healthy only while its issue proof, default-branch base, clean checkpoint worktree,
+  three-attempt limit, and 24-hour limit still match. Repeated logs that merely defer
+  the same actionable issue with no handoff and no marked decomposition request mean
+  the deployed runtime predates bounded issue continuation; suggest `/onboard`.
 - **Deployment buildup.** Current onboarding retains the three newest real
   `~/.good-fellow/deploy-*` directories. More than three after a successful onboarding
   indicates an older publisher or a cleanup failure.
@@ -158,6 +166,19 @@ for f in ~/.good-fellow/process-prs-handoff-*.state; do
 done
 gh api /notifications --paginate --jq '.[] | [.reason,.repository.full_name,.subject.type,.subject.url,.updated_at] | @tsv' | sort | uniq -c
 ```
+
+The assigned-issue sweep is serial only while real unpublished code is in progress:
+
+```bash
+ISSUE_HANDOFF="$DEPLOY_DIR/runtime/skills/fix-assigned-issues/scripts/issue-handoff.sh"
+"$ISSUE_HANDOFF" show
+"$ISSUE_HANDOFF" resume-key
+```
+
+At most one row may exist. Its attempt count or checkpoint HEAD must move across
+successful ticks. No row is expected for a decomposable oversized issue: that path
+must instead leave one marked GitHub comment with a concrete split plan. A reported
+“continue next run” with neither durable state nor a visible split request is stuck.
 
 Compare the cursor across recent successful ticks and correlate it with each log's
 per-PR outcomes. A moving cursor means round-robin progress even when one run cannot
